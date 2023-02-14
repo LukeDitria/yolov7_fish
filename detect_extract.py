@@ -9,6 +9,7 @@ import numpy as np
 import torch.backends.cudnn as cudnn
 from collections import defaultdict
 import pandas as pd
+import shutil
 
 from numpy import random
 import os
@@ -61,7 +62,10 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
     # dataset = LoadImages(file_path, img_size=imgsz, stride=stride)
 
-    cap = cv2.VideoCapture(file_path)
+    temp_filepath = os.path.join("/export/home/s2997103/lscratch", file_name)
+    shutil.copyfile(file_path, temp_filepath)
+
+    cap = cv2.VideoCapture(temp_filepath)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_fps = int(cap.get(cv2.CAP_PROP_FPS))
 
@@ -126,6 +130,9 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
                     #     f.write('%s, %.2f ' % (label, conf) + '\n')
 
                 cv2.imwrite(frame_save_path + ".jpg", im0)
+
+    if os.path.isfile(temp_filepath):
+        os.remove(temp_filepath)
 
     return pd.Series(dict(data_logger), name='Count')
 
