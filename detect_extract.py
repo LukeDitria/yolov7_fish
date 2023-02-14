@@ -62,7 +62,7 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
     # dataset = LoadImages(file_path, img_size=imgsz, stride=stride)
 
-    temp_filepath = os.path.join("/export/home/s2997103/lscratch", file_name)
+    temp_filepath = os.path.join("/export/home/s2997103/lscratch", file_path.split("/")[-1])
     shutil.copyfile(file_path, temp_filepath)
 
     cap = cv2.VideoCapture(temp_filepath)
