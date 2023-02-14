@@ -51,14 +51,13 @@ def detect():
 
                 if file_type.lower() in valid_file_ext:
                     new_file_dir = os.path.join(sub_dir, file_name)
-                    if not os.path.isdir(new_file_dir):
-                        os.makedirs(new_file_dir)
 
                     summary_filepath = os.path.join(new_file_dir,  " video_summary.csv")
 
                     if not os.path.isfile(summary_filepath) or opt.restart_job:
                         summary_dict = extract_frames(file_path, file_name, model, opt.img_size, opt.sample_fps, new_file_dir, device)
-                        summary_dict.to_csv(summary_filepath)
+                        if summary_dict is not None:
+                            summary_dict.to_csv(summary_filepath)
                     else:
                         print("Already processed %s" % file)
 
@@ -84,13 +83,19 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
     cap = cv2.VideoCapture(temp_filepath)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_fps = int(cap.get(cv2.CAP_PROP_FPS))
+    sample_rate = video_fps//sample_fps
+    frame_num = 0
+
+    if video_fps == 0 or not cap.isOpened():
+        print("Video File %s is Corrupt" % file_name)
+        return None
 
     if sample_fps > video_fps:
         raise ValueError("Sample FPS (%d) cannot be greater than Video FPS (%d)" % (sample_fps, video_fps))
 
-    sample_rate = video_fps//sample_fps
+    if not os.path.isdir(save_dir):
+        os.makedirs(save_dir)
 
-    frame_num = 0
     for fno in trange(0, total_frames, sample_rate):
         cap.set(cv2.CAP_PROP_POS_FRAMES, fno)
         _, im0 = cap.read()
