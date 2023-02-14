@@ -21,35 +21,36 @@ from utils.torch_utils import select_device, load_classifier, time_synchronized,
 
 
 def detect():
-    root_source_dir, weights, imgsz, root_save_dir, sample_fps = opt.root_source_dir, opt.weights, opt.img_size, opt.root_save_dir, opt.sample_fps
-
     # Initialize
     set_logging()
     device = select_device(opt.device)
     # Load model
-    model = attempt_load(weights, map_location=device)  # load FP32 model
+    model = attempt_load(opt.weights, map_location=device)  # load FP32 model
 
-    save_dir = os.path.join(root_save_dir, root_source_dir.split("/")[-1])
+    save_dir = os.path.join(opt.root_save_dir, opt.root_source_dir.split("/")[-1])
     valid_file_ext = ['mov', 'avi', 'mp4', 'mpg', 'mpeg', 'm4v', 'wmv', 'mkv']
     print('##################################################')
     print('##################EXTRACTING!#####################')
 
     # Use os.walk() to loop through the nested directories
-    for root, dirs, files in os.walk(root_source_dir):
+    for root, dirs, files in os.walk(opt.root_source_dir):
         if len(files) > 0:
-            sub_dir = save_dir + root.replace(root_source_dir, '')
+            sub_dir = save_dir + root.replace(opt.root_source_dir, '')
             # Loop through the list of files
             for file in files:
                 file_path = os.path.join(root, file)
                 file_name = file.split(".")[0]
                 file_type = file.split(".")[-1]
+
                 if file_type.lower() in valid_file_ext:
                     new_file_dir = os.path.join(sub_dir, file_name)
                     if not os.path.isdir(new_file_dir):
                         os.makedirs(new_file_dir)
 
-                    summary_dict = extract_frames(file_path, file_name, model, imgsz, sample_fps, new_file_dir, device)
-                    summary_dict.to_csv(os.path.join(sub_dir, file_name + " video_summary.csv"))
+                    summary_filepath = os.path.join(new_file_dir,  " video_summary.csv")
+                    if not os.path.isfile(summary_filepath) or opt.restart_job:
+                        summary_dict = extract_frames(file_path, file_name, model, opt.img_size, opt.sample_fps, new_file_dir, device)
+                        summary_dict.to_csv(summary_filepath)
 
 
 def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, device):
@@ -149,6 +150,8 @@ if __name__ == '__main__':
     parser.add_argument('--project', default='runs/detect', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
+    parser.add_argument("--restart_job", '-rj', action='store_true', help="overwrite all previous extractions")
+
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
