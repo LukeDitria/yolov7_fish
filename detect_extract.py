@@ -87,10 +87,14 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
     frame_num = 0
 
     if video_fps == 0 or not cap.isOpened():
+        if os.path.isfile(temp_filepath):
+            os.remove(temp_filepath)
         print("Video File %s is Corrupt" % file_name)
         return None
 
     if sample_fps > video_fps:
+        if os.path.isfile(temp_filepath):
+            os.remove(temp_filepath)
         raise ValueError("Sample FPS (%d) cannot be greater than Video FPS (%d)" % (sample_fps, video_fps))
 
     if not os.path.isdir(save_dir):
