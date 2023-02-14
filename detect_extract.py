@@ -33,6 +33,12 @@ def detect():
     print('##################################################')
     print('##################EXTRACTING!#####################')
 
+    # Get the total number of files and directories
+    total_files_and_directories = sum([len(files) for root, dirs, files in os.walk(opt.root_source_dir)])
+
+    # Initialize a counter for the number of files and directories processed
+    files_and_directories_processed = 0
+
     # Use os.walk() to loop through the nested directories
     for root, dirs, files in os.walk(opt.root_source_dir):
         if len(files) > 0:
@@ -49,9 +55,19 @@ def detect():
                         os.makedirs(new_file_dir)
 
                     summary_filepath = os.path.join(new_file_dir,  " video_summary.csv")
+
                     if not os.path.isfile(summary_filepath) or opt.restart_job:
                         summary_dict = extract_frames(file_path, file_name, model, opt.img_size, opt.sample_fps, new_file_dir, device)
                         summary_dict.to_csv(summary_filepath)
+                    else:
+                        print("Already processed %s" % file)
+
+                    files_and_directories_processed += 1
+                    completion_percentage = (files_and_directories_processed / total_files_and_directories) * 100
+                    print(f"Completion percentage: {completion_percentage:.2f}%")
+
+    print('##################################################')
+    print('##################COMPLETE!#####################')
 
 
 def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, device):
