@@ -10,6 +10,8 @@ import torch.backends.cudnn as cudnn
 from collections import defaultdict
 import pandas as pd
 import shutil
+from datetime import datetime, timedelta
+import ffmpeg
 
 from numpy import random
 import os
@@ -50,12 +52,11 @@ def detect():
                 file_type = file.split(".")[-1]
 
                 if file_type.lower() in valid_file_ext:
-                    new_file_dir = os.path.join(sub_dir, file_name)
-
-                    summary_filepath = os.path.join(new_file_dir,  " video_summary.csv")
+                    csv_filename = file_name + ".csv"
+                    summary_filepath = os.path.join(sub_dir,  csv_filename)
 
                     if not os.path.isfile(summary_filepath) or opt.restart_job:
-                        summary_dict = extract_frames(file_path, file_name, model, opt.img_size, opt.sample_fps, new_file_dir, device)
+                        summary_dict = extract_frames(file_path, file_name, model, opt.img_size, opt.sample_fps, device)
                         if summary_dict is not None:
                             summary_dict.to_csv(summary_filepath)
                     else:
@@ -69,38 +70,47 @@ def detect():
     print('##################COMPLETE!#####################')
 
 
-def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, device):
-    # Set Dataloader
-    data_logger = defaultdict(lambda: 0)
+def get_creation_time(video_path):
+    probe = ffmpeg.probe(video_path)
+    metadata = next(stream for stream in probe['streams'] if stream['codec_type'] == 'video')
+    if 'tags' in metadata and 'creation_time' in metadata['tags']:
+        creation_time = metadata['tags']['creation_time']
+        return creation_time.split(".")[0]
+    else:
+        return None
 
+
+def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
-    # dataset = LoadImages(file_path, img_size=imgsz, stride=stride)
 
-    temp_filepath = os.path.join("/export/home/s2997103/lscratch", file_path.split("/")[-1])
-    shutil.copyfile(file_path, temp_filepath)
-
-    cap = cv2.VideoCapture(temp_filepath)
+    cap = cv2.VideoCapture(file_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_fps = int(cap.get(cv2.CAP_PROP_FPS))
     sample_rate = video_fps//sample_fps
-    frame_num = 0
+
+    video_start_time = datetime.strptime(get_creation_time(file_path), '%Y-%m-%dT%H:%M:%S')
+    video_dataframe = None
+
+    class_names = model.module.names if hasattr(model, 'module') else model.names
 
     if video_fps == 0 or not cap.isOpened():
-        if os.path.isfile(temp_filepath):
-            os.remove(temp_filepath)
         print("Video File %s is Corrupt" % file_name)
         return None
 
     if sample_fps > video_fps:
-        if os.path.isfile(temp_filepath):
-            os.remove(temp_filepath)
         raise ValueError("Sample FPS (%d) cannot be greater than Video FPS (%d)" % (sample_fps, video_fps))
 
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir)
-
     for fno in trange(0, total_frames, sample_rate):
+        frame_delta = timedelta(seconds=fno / video_fps)
+        timestamp = video_start_time + frame_delta
+
+        frame_dict = dict(zip(class_names, np.zeros(len(class_names))))
+        frame_dict["timestamp"] = timestamp
+        frame_dict["frame_number"] = fno
+        frame_dict["file_name"] = file_name
+        frame_dict["total_detections"] = 0
+
         cap.set(cv2.CAP_PROP_POS_FRAMES, fno)
         _, im0 = cap.read()
 
@@ -108,7 +118,6 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
 
-        frame_num += 1
         img = torch.tensor(img).unsqueeze(0).to(device)/255
 
         # Inference
@@ -118,48 +127,23 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, save_dir, dev
 
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        names = model.module.names if hasattr(model, 'module') else model.names
-        colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
-
-            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-
-                if "person" in names:
-                    person_detected = det[:, -1] == names.index("person")
-
-                    if person_detected.sum() > 0:
-                        max_person_conf = (det[:, -2][person_detected]).max().item()
-                        if max_person_conf > 0.7:
-                            break
-
-                frame_name = file_name + "_frame_" + str(frame_num).zfill(8)
-                frame_save_path = os.path.join(save_dir, frame_name)
-
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-                    # xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    # line = (names[int(cls.item())], *xywh)  # label format
-                    class_name = names[int(cls)]
-                    label = f'{class_name} {conf:.2f}'
-                    # plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
+                    class_name = class_names[int(cls)]
 
-                    data_logger[class_name] += 1
+                    frame_dict[class_name] += 1
+                    frame_dict["total_detections"] += 1
 
-                    # txt_path = os.path.join(save_dir, frame_name)
-                    # with open(txt_path + '.txt', 'a') as f:
-                    #     f.write('%s, %.2f ' % (label, conf) + '\n')
+        if video_dataframe is None:
+            video_dataframe = pd.DataFrame(frame_dict, index=[0])
+        else:
+            video_dataframe = pd.concat([video_dataframe, pd.DataFrame(frame_dict, index=[0])])
 
-                cv2.imwrite(frame_save_path + ".jpg", im0)
-
-    if os.path.isfile(temp_filepath):
-        os.remove(temp_filepath)
-
-    return pd.Series(dict(data_logger), name='Count')
+    return video_dataframe
 
 
 if __name__ == '__main__':
