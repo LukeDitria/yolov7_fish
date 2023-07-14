@@ -45,6 +45,9 @@ def detect():
     for root, dirs, files in os.walk(opt.root_source_dir):
         if len(files) > 0:
             sub_dir = save_dir + root.replace(opt.root_source_dir, '')
+            if not os.path.isdir(sub_dir):
+                os.mkdir(sub_dir)
+
             # Loop through the list of files
             for file in files:
                 file_path = os.path.join(root, file)
