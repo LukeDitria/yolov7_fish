@@ -11,7 +11,6 @@ from collections import defaultdict
 import pandas as pd
 import shutil
 from datetime import datetime, timedelta
-import ffmpeg
 
 from numpy import random
 import os
@@ -73,16 +72,6 @@ def detect():
     print('##################COMPLETE!#####################')
 
 
-def get_creation_time(video_path):
-    probe = ffmpeg.probe(video_path)
-    metadata = next(stream for stream in probe['streams'] if stream['codec_type'] == 'video')
-    if 'tags' in metadata and 'creation_time' in metadata['tags']:
-        creation_time = metadata['tags']['creation_time']
-        return creation_time.split(".")[0]
-    else:
-        return None
-
-
 def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
@@ -92,7 +81,8 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
     video_fps = int(cap.get(cv2.CAP_PROP_FPS))
     sample_rate = video_fps//sample_fps
 
-    video_start_time = datetime.strptime(get_creation_time(file_path), '%Y-%m-%dT%H:%M:%S')
+    ti_m = os.path.getmtime(file_path)
+    video_start_time = datetime.utcfromtimestamp(ti_m)
     video_dataframe = None
 
     class_names = model.module.names if hasattr(model, 'module') else model.names
