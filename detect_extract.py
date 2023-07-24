@@ -86,6 +86,7 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
     video_dataframe = None
 
     class_names = model.module.names if hasattr(model, 'module') else model.names
+    class_names.remove("")
 
     if video_fps == 0 or not cap.isOpened():
         print("Video File %s is Corrupt" % file_name)
@@ -131,10 +132,22 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
                     frame_dict[class_name] += 1
                     frame_dict["total_detections"] += 1
 
+        class_log = []
+        for class_name in class_names:
+            class_dict = {}
+            class_dict["species"] = class_name
+            class_dict["detections"] = frame_dict[class_name]
+            class_dict["timestamp"] = frame_dict["timestamp"]
+            class_dict["frame_number"] = frame_dict["frame_number"]
+            class_dict["file_name"] = frame_dict["file_name"]
+            class_log.append(class_dict)
+
+        frame_df = pd.DataFrame(class_log)
+
         if video_dataframe is None:
-            video_dataframe = pd.DataFrame(frame_dict, index=[0])
+            video_dataframe = frame_df
         else:
-            video_dataframe = pd.concat([video_dataframe, pd.DataFrame(frame_dict, index=[0])])
+            video_dataframe = pd.concat([video_dataframe, frame_df])
 
     return video_dataframe
 
