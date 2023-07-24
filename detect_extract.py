@@ -86,7 +86,6 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
     video_dataframe = None
 
     class_names = model.module.names if hasattr(model, 'module') else model.names
-    class_names.remove("")
 
     if video_fps == 0 or not cap.isOpened():
         print("Video File %s is Corrupt" % file_name)
@@ -128,7 +127,6 @@ def extract_frames(file_path, file_name, model, imgsz, sample_fps, device):
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
                     class_name = class_names[int(cls)]
-
                     frame_dict[class_name] += 1
                     frame_dict["total_detections"] += 1
 
